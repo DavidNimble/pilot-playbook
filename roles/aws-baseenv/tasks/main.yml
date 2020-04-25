@@ -1,0 +1,14 @@
+---
+# tasks file for aws-baseenv
+
+# Create the vpc, subnets, security groups, etc
+- name: "Create supporting vpc infrastructure"
+  include: create-vpc.yml
+
+# build each ec2 instance
+#TODO: change project -> variable
+- name: "Build ec2 instance"
+  include: create-ec2.yml
+  with_dict: "{{ project_instances }}"
+  loop_control:
+    loop_var: instance

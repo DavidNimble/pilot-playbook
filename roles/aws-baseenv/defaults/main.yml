@@ -1,0 +1,24 @@
+---
+# defaults file for aws-baseenv
+project_name: generic
+vpc_name: "{{ project_name }}_vpc"
+vpc_cidr_block: 10.2.0.0/22
+aws_region: us-east-1
+created_by: NimbleCloudINC
+
+#subnets we create
+vpc_subnets:
+  subnet1:
+    cidr: 10.2.12.0/28 #TODO: verify in testing
+    az: "{{ aws_region }}a"
+
+#per app
+#TODO: ingest dynamically
+vpc_security_groups:
+  - name: allow-public-ports
+    description: "Allow public ports"
+    rules:
+      - proto: tcp
+        cidr_ip: 0.0.0.0/0
+        ports:
+          - 22

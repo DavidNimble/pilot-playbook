@@ -1,0 +1,90 @@
+---
+#create the vpc
+- name: "{{ vpc_name }} | Create VPC"
+  ec2_vpc_net:
+    name: "{{ vpc_name }}"
+    cidr_block: "{{ vpc_cidr_block }}"
+    region: "{{ aws_region }}"
+    tags:
+      Project: "{{ project_name }}"
+      CreatedBy: "{{ created_by }}"
+  register: create_vpc
+
+# parse the output of creating the VPC to extract the VPC ID -- we need to specify this in the subsequent tasks
+- name: "{{ vpc_name }} | Set fact: VPC ID"
+  set_fact:
+    vpc_id: "{{ create_vpc.vpc.id }}"
+
+# iterate over our dictionary of subnets with `with_dict`, and create each one with the Ansible module
+- name: "{{ vpc_name }} | Create VPC subnets"
+  ec2_vpc_subnet:
+    state: present
+    vpc_id: "{{ vpc_id }}"
+    cidr: "{{ item.value.cidr }}"
+    region: "{{ aws_region }}"
+    az: "{{ item.value.az }}"
+    tags:
+      Name: "{{ item.key }}"
+      Project: "{{ project_name }}"
+      CreatedBy: "{{ created_by }}"
+  with_dict: "{{ vpc_subnets }}"
+  register: create_vpc_subnets 
+
+# this is a tricky one, using some filters to:
+# - loop over the list of outputs from creating our subnets
+# - for that subnet, define a "name: id" entry in the `vpc_subnet_ids` dictionary (or empty dictionary if it doesn't exist)
+- name: "{{ vpc_name }} | Set fact: VPC subnet IDs"
+  set_fact:
+    vpc_subnet_ids: "{{ vpc_subnet_ids | default({}) | combine({ item.subnet.tags.Name: item.subnet.id }) }}"
+  loop: "{{ create_vpc_subnets.results }}"
+
+# iterate over our list of security groups and create each one with the Ansible module
+- name: "{{ vpc_name }} | Create VPC security groups"
+  ec2_group:
+    state: present
+    name: "{{ item.name }}"
+    description: "{{ item.description }}"
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    rules: "{{ item.rules }}"
+    tags:
+      Project: "{{ project_name }}"
+      CreatedBy: "{{ created_by }}"
+  loop: "{{ vpc_security_groups }}"
+
+# make the IGW
+- name: "{{ vpc_name }} | Create IGW"
+  ec2_vpc_igw:
+    state: present
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    tags:
+      Name: "{{ vpc_name }}"
+      Project: "{{ project_name }}"
+      CreatedBy: "{{ created_by }}"
+  register: igw
+
+#TODO: why does this exist. is it route entries to the igw for all traffic?
+- name: "{{ vpc_name }} | Set up route tables for private subnets"
+  ec2_vpc_route_table:
+    state: present
+    vpc_id: "{{ vpc_id }}"
+    region: "{{ aws_region }}"
+    tags:
+      Name: "{{ vpc_name }}"
+      Project: "{{ project_name }}"
+    subnets:
+      - "{{ vpc_subnet_ids['subnet1'] }}"
+    routes:
+      - dest: 0.0.0.0/0
+        gateway_id: "{{ igw.gateway_id }}"
+  register: aws_vpc_route_table
+
+
+- name: "{{ vpc_name }} | Create EC2 key"
+  ec2_key:
+    state: present
+    region: "{{ aws_region }}"
+    name: "{{ vpc_key }}"
+    key_material: "{{ vpc_key_material }}"
+    force: true

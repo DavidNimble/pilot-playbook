@@ -1,0 +1,28 @@
+---
+# tasks file for local-setup
+- name: configure | Check if pip is installed
+  shell: pip --version
+  ignore_errors: True
+  changed_when: false
+  register: configure_check_pip
+
+# Download Pip if we want to install the aws cli utility
+- name: configure | Download get-pip.py
+  get_url:
+    url: 'https://bootstrap.pypa.io/2.6/get-pip.py'
+    dest: /tmp/get-pip.py
+  when: configure_check_pip.rc != 0
+ 
+ # Install Pip
+- name: configure | Install pip
+  command: "python get-pip.py pip==9.0.3 --user"
+  args:
+    chdir: /tmp
+  when: configure_check_pip.rc != 0
+
+# Install the AWSCli utility using Pip if var install_awscli is set to true
+- name: configure | Install AWSCli with Pip
+  pip:
+    name: awscli
+    state: latest
+    extra_args: --user
